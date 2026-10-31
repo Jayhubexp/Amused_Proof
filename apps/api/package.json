@@ -1,0 +1,27 @@
+{
+  "name": "@civicproof/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CivicProof AI backend — Express (ESM) + Mongoose with in-memory fallback. Research prototype.",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test --test-force-exit tests/*.test.js"
+  },
+  "dependencies": {
+    "@semaphore-protocol/group": "^4.14.5",
+    "@semaphore-protocol/identity": "^4.14.5",
+    "@semaphore-protocol/proof": "^4.14.5",
+    "@simplewebauthn/server": "^14.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5",
+    "openai": "^4.85.4"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}

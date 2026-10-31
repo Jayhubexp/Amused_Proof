@@ -1,0 +1,30 @@
+{
+  "name": "@civicproof/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CivicProof AI frontend — React + Vite + Tailwind + Mantine. Research prototype.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mantine/core": "^7.15.3",
+    "@mantine/hooks": "^7.15.3",
+    "@semaphore-protocol/group": "^4.14.5",
+    "@semaphore-protocol/identity": "^4.14.5",
+    "@semaphore-protocol/proof": "^4.14.5",
+    "@simplewebauthn/browser": "^14.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "vite": "^6.0.7"
+  }
+}
