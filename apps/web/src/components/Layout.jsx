@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { Burger, Container, Drawer, Group, Stack, Text } from '@mantine/core';
+import { Badge, Burger, Container, Drawer, Group, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 const links = [
@@ -10,6 +11,11 @@ const links = [
   { to: '/integrity', label: 'Integrity' },
   { to: '/organizer', label: 'Organizer' },
 ];
+
+const publicLinks = links.filter((l) => l.to !== '/organizer');
+
+const focusRing =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-civic-accent';
 
 function BrandMark() {
   return (
@@ -24,50 +30,94 @@ function BrandMark() {
   );
 }
 
+function DemoPill({ className = 'hidden xl:inline-flex' }) {
+  return (
+    <span
+      className={`${className} items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-civic-ink`}
+      title="Demonstration with fictional data — not a live election"
+    >
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-civic-gold" />
+      Demo mode
+    </span>
+  );
+}
+
 export function Layout({ children }) {
   const [opened, { toggle, close }] = useDisclosure(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-50 border-b border-stone-200 bg-civic-paper">
-        <Container size="lg" className="flex h-16 items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 no-underline" aria-label="CivicProof AI home">
-            <BrandMark />
-            <span className="flex flex-col leading-tight">
-              <Text fw={700} size="md" className="text-civic-ink">
+      <div className="sticky top-0 z-50">
+        <div className="h-[3px] bg-civic-accent" aria-hidden="true">
+          <div className="h-full w-24 bg-civic-gold" />
+        </div>
+        <header
+          className={`border-b border-stone-200 bg-civic-paper transition-shadow duration-150 ${
+            scrolled ? 'shadow-[0_2px_14px_rgba(20,35,46,0.10)]' : ''
+          }`}
+        >
+          <Container size="lg" className="flex h-16 items-center justify-between gap-4">
+            <Link
+              to="/"
+              className={`flex items-center gap-2.5 rounded-md no-underline ${focusRing}`}
+              aria-label="CivicProof AI home"
+            >
+              <BrandMark />
+              <Text fw={700} size="md" className="whitespace-nowrap text-civic-ink">
                 CivicProof AI
               </Text>
-              <Text size="xs" c="dimmed">
-                Research prototype
-              </Text>
-            </span>
-          </Link>
-          <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
-            {links.map((l) => (
+              <span className="hidden lg:inline">
+                <Badge color="gray" variant="light" size="xs">
+                  Research prototype
+                </Badge>
+              </span>
+            </Link>
+            <nav aria-label="Primary" className="hidden items-center gap-6 md:flex lg:gap-8">
+              {publicLinks.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  end={l.to === '/'}
+                  className={({ isActive }) =>
+                    `whitespace-nowrap rounded-t-md border-b-2 px-1 py-2 text-[15px] font-medium no-underline transition-colors duration-150 ${focusRing} ${
+                      isActive
+                        ? 'border-civic-accent text-civic-accent'
+                        : 'border-transparent text-civic-ink hover:bg-civic-accent/10 hover:text-civic-accent'
+                    }`
+                  }
+                >
+                  {l.label}
+                </NavLink>
+              ))}
+            </nav>
+            <div className="hidden items-center gap-3 md:flex">
+              <DemoPill />
               <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.to === '/'}
-                className={({ isActive }) =>
-                  `rounded-md px-3 py-2 text-sm font-medium no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-civic-accent ${
-                    isActive ? 'bg-civic-accent/10 text-civic-accent' : 'text-civic-ink hover:bg-stone-200/60'
-                  }`
-                }
+                to="/organizer"
+                className={`whitespace-nowrap rounded-md bg-civic-accent px-4 py-2 text-[15px] font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0a5a4e] ${focusRing}`}
               >
-                {l.label}
+                Organizer
               </NavLink>
-            ))}
-          </nav>
-          <Burger
-            opened={opened}
-            onClick={toggle}
-            className="md:hidden"
-            color="#14232e"
-            aria-label={opened ? 'Close menu' : 'Open menu'}
-            aria-expanded={opened}
-          />
-        </Container>
-      </header>
+            </div>
+            <Burger
+              opened={opened}
+              onClick={toggle}
+              className="md:hidden"
+              color="#14232e"
+              aria-label={opened ? 'Close menu' : 'Open menu'}
+              aria-expanded={opened}
+            />
+          </Container>
+        </header>
+      </div>
 
       <Drawer
         opened={opened}
@@ -77,15 +127,15 @@ export function Layout({ children }) {
         className="md:hidden"
         aria-label="Mobile navigation"
       >
-        <Stack gap="xs">
-          {links.map((l) => (
+        <Stack gap={4}>
+          {publicLinks.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.to === '/'}
               onClick={close}
               className={({ isActive }) =>
-                `rounded-md px-3 py-2.5 text-base font-medium no-underline ${
+                `flex min-h-[44px] items-center rounded-md px-3 text-base font-medium no-underline transition-colors duration-150 ${focusRing} ${
                   isActive ? 'bg-civic-accent/10 text-civic-accent' : 'text-civic-ink hover:bg-stone-200/60'
                 }`
               }
@@ -93,7 +143,17 @@ export function Layout({ children }) {
               {l.label}
             </NavLink>
           ))}
-          <Text size="xs" c="dimmed" mt="md">
+          <NavLink
+            to="/organizer"
+            onClick={close}
+            className={`mt-2 flex min-h-[44px] items-center justify-center rounded-md bg-civic-accent px-3 text-base font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0a5a4e] ${focusRing}`}
+          >
+            Organizer
+          </NavLink>
+          <Group mt="md" gap="xs">
+            <DemoPill className="inline-flex" />
+          </Group>
+          <Text size="xs" c="dimmed">
             Research prototype using fictional elections.
           </Text>
         </Stack>

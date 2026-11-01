@@ -46,6 +46,16 @@ export const elections = [
 // Fictional eligibility roll. Only these voter refs (with their demo PINs) may
 // register a passkey. Every person here is invented; PINs are demo-only and
 // would never exist in a real eligibility system.
+// Public demo organizer logins for local testing. These credentials are printed
+// in the README on purpose — they must ONLY exist when the operator explicitly
+// sets DEMO_ORGANIZERS=true, and the API refuses to boot with them in
+// production (see validateConfig in config.js). Never enable on shared data.
+export const demoOrganizers = [
+  { username: 'organizer-1', password: 'fictional-demo-pass-01' },
+  { username: 'organizer-2', password: 'fictional-demo-pass-02' },
+  { username: 'organizer-3', password: 'fictional-demo-pass-03' },
+];
+
 export const voterRoll = [
   { voterRef: 'PM-1001', electionId: 'metro-transit-2026', displayName: 'Demo Voter Ada', pin: '4921' },
   { voterRef: 'PM-1002', electionId: 'metro-transit-2026', displayName: 'Demo Voter Ben', pin: '7734' },

@@ -19,6 +19,8 @@ import { createApp } from '../src/app.js';
 import { config } from '../src/config.js';
 import { MongoStore } from '../src/store/mongo.js';
 import { REQUIRED_UNIQUE_INDEXES, ensureMongoIndexes } from '../src/models/index.js';
+import { demoOrganizers } from '../src/seed/fictional.js';
+import { seedDemoOrganizers } from '../src/seed/demo-organizers.js';
 import { resetRateLimits } from '../src/lib/rate-limit.js';
 import { commitmentMessage, electionScope } from '../src/zk/semaphore.js';
 
@@ -244,6 +246,16 @@ async function freshElectionWithInvites(count = 1) {
 }
 
 // -- bootstrap & login --------------------------------------------------------
+
+test('demo organizer seed enables README login on MongoDB', async () => {
+  await seedDemoOrganizers(store);
+  await seedDemoOrganizers(store); // reseed is idempotent
+  for (const { username, password } of demoOrganizers) {
+    const res = await request(app).post('/api/organizer/login').send({ username, password });
+    assert.equal(res.status, 200);
+    assert.ok(res.body.csrfToken);
+  }
+});
 
 test('bootstrap creates the founding organizer exactly once', async () => {
   const first = await setupOrganizer();

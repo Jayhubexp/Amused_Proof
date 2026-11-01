@@ -28,4 +28,16 @@ export const config = {
   // constant-time compare. Unset disables the bootstrap endpoint entirely.
   organizerSetupToken: process.env.ORGANIZER_SETUP_TOKEN || null,
   organizerSessionTtlMs: Number(process.env.ORGANIZER_SESSION_TTL_MS ?? 3600000),
+  // Explicit opt-in for the public README demo organizer logins. Never on by
+  // default; hard-blocked in production (see validateConfig).
+  demoOrganizers: process.env.DEMO_ORGANIZERS === 'true',
 };
+
+/** Fail-closed config validation, run at boot before anything else. Throws. */
+export function validateConfig(cfg = config) {
+  if (cfg.demoOrganizers && cfg.isProduction) {
+    throw new Error(
+      'CivicProof: DEMO_ORGANIZERS=true is forbidden in production (public demo credentials).',
+    );
+  }
+}

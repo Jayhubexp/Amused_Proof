@@ -3,7 +3,7 @@ import { Badge } from '@mantine/core';
 /** Honest labelling: every claim about security posture is explicit. */
 export function SimulatedBadge() {
   return (
-    <Badge color="orange" variant="light" size="sm">
+    <Badge component="span" color="orange" variant="light" size="sm">
       Simulated
     </Badge>
   );
@@ -11,7 +11,7 @@ export function SimulatedBadge() {
 
 export function EnforcedBadge() {
   return (
-    <Badge color="teal" variant="light" size="sm">
+    <Badge component="span" color="teal" variant="light" size="sm">
       Enforced
     </Badge>
   );
@@ -19,7 +19,7 @@ export function EnforcedBadge() {
 
 export function FictionalBadge() {
   return (
-    <Badge color="gray" variant="light" size="sm">
+    <Badge component="span" color="gray" variant="light" size="sm">
       Fictional data
     </Badge>
   );
@@ -27,7 +27,7 @@ export function FictionalBadge() {
 
 export function LiveBadge() {
   return (
-    <Badge color="green" variant="light" size="sm">
+    <Badge component="span" color="green" variant="light" size="sm">
       Live model
     </Badge>
   );
@@ -35,7 +35,7 @@ export function LiveBadge() {
 
 export function RulesOnlyBadge() {
   return (
-    <Badge color="gray" variant="outline" size="sm">
+    <Badge component="span" color="gray" variant="outline" size="sm">
       Rules only
     </Badge>
   );
@@ -43,7 +43,7 @@ export function RulesOnlyBadge() {
 
 export function ZKBadge() {
   return (
-    <Badge color="teal" variant="outline" size="sm">
+    <Badge component="span" color="teal" variant="outline" size="sm">
       ZK verified
     </Badge>
   );

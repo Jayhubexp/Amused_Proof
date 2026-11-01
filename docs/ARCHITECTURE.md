@@ -107,7 +107,9 @@ proofs (401, audited as `proof.rejected`), and reused nullifiers (409).
   Roll-access elections only; PINs are demo-only.
 - **Organizer**: username (unique), scrypt password hash, createdAt/createdBy.
   No public signup: founding account via single-use setup token, further
-  accounts created by signed-in organizers.
+  accounts created by signed-in organizers. Three public demo logins exist for
+  local testing only, gated on explicit `DEMO_ORGANIZERS=true` and blocked in
+  production by `validateConfig` at boot.
 - **Bootstrap**: single-row single-use setup-token consumption marker.
 - **Invitation**: tokenHash (SHA-256, id), electionId, voterRef (`INV-…`),
   label, expiresAt, redeemedAt, createdBy. Plaintext codes exist only in the

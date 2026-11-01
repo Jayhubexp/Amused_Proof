@@ -37,6 +37,63 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 Optional: copy `apps/api/.env.example` to `apps/api/.env` to set `PORT`,
 `MONGODB_URI`, `CORS_ORIGINS`, or the Muse Spark settings below.
 
+## Try the organizer portal (demo logins)
+
+Three fictional organizer accounts are available for local testing. They are
+public on purpose — enable them explicitly and never on shared data:
+
+```powershell
+# apps/api/.env
+DEMO_ORGANIZERS=true
+```
+
+Restart the API (`npm run dev:api`), open
+[http://localhost:5173/organizer/login](http://localhost:5173/organizer/login),
+and sign in as:
+
+| Username | Password |
+|---|---|
+| `organizer-1` | `fictional-demo-pass-01` |
+| `organizer-2` | `fictional-demo-pass-02` |
+| `organizer-3` | `fictional-demo-pass-03` |
+
+Each demo organizer can create draft elections, issue invitations, and run the
+full lifecycle. The API refuses to boot with `DEMO_ORGANIZERS=true` in
+production (`NODE_ENV=production`), so these credentials can never accidentally
+ship on a live deployment. Real organizer onboarding uses the single-use
+`ORGANIZER_SETUP_TOKEN` instead (see `.env.example`).
+
+## Deploy to Vercel
+
+One project serves both the SPA and the API (same origin, so `SameSite=Lax`
+session cookies work). `vercel.json` builds `apps/web` and rewrites `/api/*`
+to the serverless Express adapter in `/api/index.js`; client-side routes fall
+back to `/index.html`.
+
+1. Push the repo to GitHub and import it in Vercel (root directory: repository
+   root; build settings come from `vercel.json`, no dashboard overrides needed).
+2. Create an Atlas cluster + database user, and allowlist `0.0.0.0/0` (Vercel
+   egress IPs are dynamic).
+3. Set production environment variables in the Vercel dashboard (see table
+   below), using the final host you will share — passkeys bind to it.
+4. Deploy, then visit `/organizer/login` → First-time setup with your
+   `ORGANIZER_SETUP_TOKEN`, create elections, and walk the voter flow once.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `MONGODB_URI` | Yes | Atlas URI; boot fails closed without it |
+| `ORGANIZER_SETUP_TOKEN` | Yes | 32-byte hex; single-use bootstrap |
+| `WEBAUTHN_RP_ID` | Yes | Production host, no scheme (e.g. `my-app.vercel.app`) |
+| `WEBAUTHN_ORIGIN` | Yes | `https://` + host, must match exactly |
+| `COOKIE_SECURE` | Yes | `true` |
+| `CORS_ORIGINS` | Yes | `https://` + host |
+| `MUSE_SPARK_API_KEY` | No | Without it, integrity runs rules-only |
+| `NODE_ENV` | Auto | Vercel sets `production` |
+
+Never set `DEMO_ORGANIZERS` or `STORE_FILE` in production. Expect slow first
+requests on cold starts (Atlas connect + proof-artifact fetch); later requests
+reuse the warm instance.
+
 ## AI integrity assistant (Phase 2)
 
 The Integrity Dashboard combines deterministic rules (always on) with live
