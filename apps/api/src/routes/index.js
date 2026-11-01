@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Router } from 'express';
+import { Router } from '../lib/http.js';
 import { requireHex64, requireId, requireInvitationToken, requirePin, requireString, requireVoterRef } from '../lib/validate.js';
 import { randomHex, sha256Hex } from '../lib/crypto.js';
 import { RATE_LIMITS, checkRateLimit, rateLimit } from '../lib/rate-limit.js';

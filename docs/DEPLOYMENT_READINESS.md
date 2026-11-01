@@ -78,13 +78,43 @@ are listed as first-deploy verifications, not blockers.
 ## Verification actually observed here
 
 - `node apps/api/scripts/smoke.mjs`: **PASS** (exit 0), full organizer→audit flow.
+- `node apps/api/scripts/entrypoint-check.mjs`: **PASS** — the exact module
+  Vercel loads default-exports a serving Express app; `GET /api/health` → 200
+  JSON. Also covered by `tests/entrypoint.test.js` (subprocess, no ports).
 - `node --check`: passes on every touched file; `vercel.json` parses.
-- `npm run build -w apps/web`: **passes** (6.75s; pre-existing chunk-size warning only).
+- `npm run build -w apps/web`: **passes** (pre-existing chunk-size warning only).
 - `npm test`: **cannot run in this sandbox** (all binds denied, `EACCES` —
-  affects pre-existing suites identically). Suite is now 94 tests (93 + 1 new
-  Mongo rate-limit test). Needs a user-terminal run.
+  affects pre-existing suites identically). Suite is now 95 tests (94 + 1 new
+  entrypoint test). Needs a user-terminal run.
 - `vercel dev`/preview deploy: cannot run here (needs Vercel CLI + account +
   binds). Needs a user deploy.
+
+## Entrypoint-incident fix (standalone API deployment)
+
+Symptom seen on a standalone API deployment: `Invalid export found in module
+"/var/task/apps/api/src/app.js". The default export must be a function or
+server.` Root cause: Vercel loaded `src/app.js` as the function entry, which
+exported only the named `createApp` factory — no valid default export.
+Detection steering alone (making `src/index.js` the preferred match) is not
+sufficient against the observed loader behavior, so BOTH modules are now valid
+entries by construction:
+
+- `src/index.js`: no import-time side effects; default-exports an HTTP handler
+  that awaits a cached, retryable boot (fail-closed validation → Mongo
+  connect → index verification → seeding → app build with an assertion that
+  the result is a real Express app). Boot failures return a generic 500
+  (details logged server-side) and reset the cache for a true from-scratch
+  retry — no request is ever served without successful initialization.
+- `src/app.js`: keeps the named `createApp` factory untouched (tests
+  unaffected) and adds a default export that delegates to the index boot via
+  dynamic import (no module cycle). Importing it never boots anything.
+- `src/lib/http.js` gateway retained: `src/index.js` stays the only static
+  importer of the framework package, so sane detection still prefers it.
+
+Standalone API projects must use Root Directory `apps/api` (repo-root
+`vercel.json` is then out of scope and ignored). Verified by
+`tests/entrypoint.test.js` + `scripts/entrypoint-check.mjs`, which import both
+modules exactly like Vercel and serve `GET /api/health` through each.
 
 ## First-deploy verifications (user checklist, not blockers)
 

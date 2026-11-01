@@ -27,6 +27,32 @@ without reworking cookies (explicitly out of scope).
    `ORGANIZER_SETUP_TOKEN` → create elections → walk the voter flow once on
    the live URL (this shakes out any RP/origin mismatch immediately).
 
+## Standalone API project (alternative to Services)
+
+If the API is deployed as its own Vercel project instead:
+
+- Root Directory: `apps/api`. Framework Preset: Express (or auto). The repo
+  root `vercel.json` is outside the root directory and is ignored — no
+  conflict with the Services project.
+- Entrypoint resolution is robust either way Vercel loads it: `src/index.js`
+  is the only file statically importing the `express` package (everything
+  else goes through the dynamic-import gateway in `src/lib/http.js`), and
+  BOTH `src/index.js` and `src/app.js` default-export working HTTP handlers
+  over the same cached, retryable, fail-closed boot. Do not add other files
+  that statically import `express`.
+- Same environment variables as below, except cross-origin values:
+  `CORS_ORIGINS` = the frontend origin, `WEBAUTHN_ORIGIN` = the frontend
+  origin (the ceremony runs in the browser), `WEBAUTHN_RP_ID` = the frontend
+  host.
+
+> [!WARNING]
+> Split origins break cookie auth. Voter and organizer sessions use
+> `SameSite=Lax` HttpOnly cookies, which browsers do NOT send on cross-origin
+> `fetch` — so with a separately deployed frontend, all authenticated flows
+> (organizer portal, voting) fail. The supported production topology is the
+> single-origin Services deployment above. Cross-origin sessions would require
+> a deliberate cookie-security redesign (explicitly out of scope).
+
 ## Environment variables (production)
 
 | Variable | Required | Value / notes |

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { Router } from 'express';
+import { Router } from '../lib/http.js';
 import { config } from '../config.js';
 import {
   requireAccessMode,
