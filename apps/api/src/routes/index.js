@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
-import { requireHex64, requireId, requirePin, requireString, requireVoterRef } from '../lib/validate.js';
-import { randomHex } from '../lib/crypto.js';
+import { requireHex64, requireId, requireInvitationToken, requirePin, requireString, requireVoterRef } from '../lib/validate.js';
+import { randomHex, sha256Hex } from '../lib/crypto.js';
+import { RATE_LIMITS, checkRateLimit, rateLimit } from '../lib/rate-limit.js';
 import { config } from '../config.js';
 import {
   buildAuthenticationOptions,
@@ -26,6 +27,54 @@ import {
   validateProofShape,
   verifyMembershipProof,
 } from '../zk/semaphore.js';
+
+function clientIp(req) {
+  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+}
+
+// Invitation-path registration options. Unknown, revoked, expired, and
+// election-mismatched tokens all yield one uniform 403 (no validity oracle),
+// and attempts are strictly rate-limited per IP.
+async function registerOptionsForInvitation(req, res, store, webauthn, election, invitationToken) {
+  const attempt = checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
+  if (!attempt.allowed) {
+    res.setHeader('Retry-After', String(attempt.retryAfterSec));
+    return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+  }
+  if (req.body?.voterRef !== undefined || req.body?.pin !== undefined) {
+    return res.status(400).json({ error: 'Provide either an invitation token or voter reference + PIN, not both.' });
+  }
+  const token = requireInvitationToken(invitationToken);
+  const invitation = await store.peekInvitation(token);
+  if (!invitation || invitation.electionId !== election.id || (election.access ?? 'roll') !== 'invitation') {
+    return res.status(403).json({ error: 'Invalid or expired invitation.' });
+  }
+  const existing = await store.getPasskeysByVoter(invitation.voterRef, election.id);
+  if (existing.length > 0) {
+    return res.status(409).json({ error: 'This voter has already registered a passkey for this election.' });
+  }
+  // Opaque user handle: random bytes, never the voter ref.
+  const userIdBytes = randomBytes(32);
+  const options = await buildRegistrationOptions(webauthn, {
+    rpName: config.rpName,
+    rpId: config.rpId,
+    userName: invitation.voterRef,
+    userDisplayName: invitation.label || 'Invited voter',
+    userIdBytes,
+    excludeCredentialIds: existing.map((p) => p.id),
+  });
+  const requestId = randomHex(16);
+  await store.saveWebAuthnChallenge({
+    id: requestId,
+    challenge: options.challenge,
+    type: 'registration',
+    voterRef: invitation.voterRef,
+    electionId: election.id,
+    userIdBase64: Buffer.from(userIdBytes).toString('base64url'),
+    invitationHash: sha256Hex(token),
+  });
+  return res.status(201).json({ requestId, options });
+}
 
 export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthnLib } = {}) {
   const router = Router();
@@ -58,15 +107,26 @@ export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthn
   }));
 
   // -- WebAuthn passkey registration (eligibility-gated) -----------------------
-  router.post('/webauthn/register/options', asyncHandler(async (req, res) => {
+  // Two eligibility paths: fictional-roll PIN (legacy demo elections) or a
+  // single-use organizer invitation. Never both in one request.
+  router.post('/webauthn/register/options', rateLimit(RATE_LIMITS.registration), asyncHandler(async (req, res) => {
     const electionId = requireId(req.body?.electionId, 'election id');
-    const voterRef = requireVoterRef(req.body?.voterRef);
-    const pin = requirePin(req.body?.pin);
     const election = await store.getElection(electionId);
     if (!election) return res.status(404).json({ error: 'Unknown election.' });
-    if (election.status !== 'open') {
+    // Passkey registration is allowed in any live phase (legacy open included).
+    if (!['open', 'enrolment', 'frozen', 'voting'].includes(election.status)) {
       return res.status(409).json({ error: 'Election is not open for registration.' });
     }
+    const invitationToken = req.body?.invitationToken;
+    if (invitationToken !== undefined && invitationToken !== '') {
+      return registerOptionsForInvitation(req, res, store, webauthn, election, invitationToken);
+    }
+    // The roll path is closed on invitation-access elections.
+    if ((election.access ?? 'roll') !== 'roll') {
+      return res.status(403).json({ error: 'This election requires an invitation to register.' });
+    }
+    const voterRef = requireVoterRef(req.body?.voterRef);
+    const pin = requirePin(req.body?.pin);
     // Only voters on the fictional roll, with the matching demo PIN, may
     // register. Wrong ref and wrong PIN give the same answer (no oracle).
     const entry = await store.getRollEntry(voterRef, electionId);
@@ -123,7 +183,7 @@ export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthn
       throw err;
     }
     const credential = info.credential;
-    await store.savePasskey({
+    const passkey = {
       id: credential.id,
       voterRef: ceremony.voterRef,
       electionId: ceremony.electionId,
@@ -133,12 +193,49 @@ export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthn
       transports: response.response?.transports ?? credential.transports ?? [],
       deviceType: info.credentialDeviceType,
       backedUp: info.credentialBackedUp,
-    });
+    };
+    if (ceremony.invitationHash) {
+      // Atomic redeem-and-save: a token consumed between options and verify
+      // surfaces the same uniform 403 as an unknown token (thrown by store).
+      await store.registerInvitedPasskey({ tokenHash: ceremony.invitationHash, passkey });
+    } else {
+      await store.savePasskey(passkey);
+    }
     res.status(201).json({
       registered: true,
       voterRef: ceremony.voterRef,
       electionId: ceremony.electionId,
     });
+  }));
+
+  // Invitation pre-check for the redeem UI. 200 with { valid: false } for
+  // every failure mode — no status-code oracle between unknown, revoked,
+  // expired, and mismatched tokens. Redemption itself happens atomically
+  // inside register/verify, so there is deliberately no separate redeem
+  // endpoint whose window could be raced.
+  router.post('/invitations/validate', asyncHandler(async (req, res) => {
+    const attempt = checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
+    if (!attempt.allowed) {
+      res.setHeader('Retry-After', String(attempt.retryAfterSec));
+      return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+    }
+    let invitation = null;
+    try {
+      invitation = await store.peekInvitation(requireInvitationToken(req.body?.invitationToken));
+    } catch {
+      invitation = null;
+    }
+    const election = invitation ? await store.getElection(invitation.electionId) : null;
+    const expectedElection = req.body?.electionId;
+    const valid = Boolean(
+      invitation
+      && election
+      && ['open', 'enrolment', 'frozen', 'voting'].includes(election.status)
+      && (election.access ?? 'roll') === 'invitation'
+      && (expectedElection === undefined || expectedElection === election.id),
+    );
+    if (!valid) return res.json({ valid: false });
+    res.json({ valid: true, election: { id: election.id, title: election.title } });
   }));
 
   // -- WebAuthn passkey authentication -----------------------------------------
@@ -298,19 +395,28 @@ export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthn
   // no cookies, no CSRF token by design — identity-bearing state would defeat
   // the anonymity this endpoint exists to provide. (Same-origin POST
   // enforcement still applies via the middleware above.)
-  router.post('/ballots/anonymous', asyncHandler(async (req, res) => {
+  router.post('/ballots/anonymous', rateLimit(RATE_LIMITS.anonymous), asyncHandler(async (req, res) => {
     const electionId = requireId(req.body?.electionId, 'election id');
     const ballotCommitment = requireHex64(req.body?.ballotCommitment, 'ballot commitment');
     const proof = validateProofShape(req.body?.proof);
     const election = await store.getElection(electionId);
     if (!election) return res.status(404).json({ error: 'Unknown election.' });
-    if (election.status !== 'open') {
+    if (election.status !== 'open' && election.status !== 'voting') {
       await store.auditAnonymousRejection({
         electionId,
         nullifier: proof.nullifier,
         detail: 'Ballot rejected: election is not open.',
       });
       return res.status(409).json({ error: 'Election is not open for voting.' });
+    }
+    // Mode gate before any proof work: standard elections never verify proofs.
+    if (election.votingMode === 'standard') {
+      await store.auditAnonymousRejection({
+        electionId,
+        nullifier: proof.nullifier,
+        detail: 'Ballot rejected: election accepts standard ballots only.',
+      });
+      return res.status(409).json({ error: 'This election accepts standard ballots only.' });
     }
     // Cheap server-side binding checks first; the SNARK verification last.
     if (proof.scope !== electionScope(electionId)) {

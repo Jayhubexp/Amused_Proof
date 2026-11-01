@@ -95,16 +95,34 @@ proofs (401, audited as `proof.rejected`), and reused nullifiers (409).
 
 ## 5. Data model
 
-- **Election**: id, title, description, status, dates, candidates[{id, name, party}].
+- **Election**: id, title, description, status (`draft` → `enrolment` →
+  `frozen` → `voting` → `closed`, plus legacy `open`; atomic conditional
+  transitions), access (`roll` | `invitation`), votingMode (`standard` |
+  `anonymous`, required at creation, locked after draft; unset on legacy
+  seeds, which allow both paths), dates, candidates[{id, name, party}],
+  createdBy organizer, groupFrozen flag + frozenAt/frozenVersion/frozenRoot
+  (approved root persisted at freeze; frozen elections verify only it).
+  Drafts are organizer-only; edits/deletes are drafts-only.
 - **VoterRoll** (seed, fictional): voterRef, electionId, displayName, demo PIN.
-  Only roll members may enrol; PINs are demo-only.
+  Roll-access elections only; PINs are demo-only.
+- **Organizer**: username (unique), scrypt password hash, createdAt/createdBy.
+  No public signup: founding account via single-use setup token, further
+  accounts created by signed-in organizers.
+- **Bootstrap**: single-row single-use setup-token consumption marker.
+- **Invitation**: tokenHash (SHA-256, id), electionId, voterRef (`INV-…`),
+  label, expiresAt, redeemedAt, createdBy. Plaintext codes exist only in the
+  creation response; unique (electionId, voterRef).
 - **Passkey**: credential id, voterRef, electionId, opaque user handle, PUBLIC
   key + counter + transports + device metadata, server-side voter secret,
-  nullifierHash. One per (voter, election). Never private keys or biometrics.
+  nullifierHash. One per (voter, election) via unique index. Never private
+  keys or biometrics.
 - **WebAuthnChallenge**: request id, challenge, ceremony type, voter/election,
-  allow-list, expiry. Single-use, 5-minute, type-bound.
-- **Session**: random id (cookie value), voterRef, electionId, credentialId,
-  CSRF token, expiry. Server-side only.
+  allow-list, optional invitationHash (invitation-path registrations), expiry.
+  Single-use, 5-minute, type-bound.
+- **Session**: random id (cookie value), role (`voter` | `organizer`),
+  voterRef/electionId/credentialId (voters) or organizerId (organizers), CSRF
+  token, expiry. Server-side only. Roles are rejected cross-wise.
+- **Counter**: named atomic counters (audit `seq` via `$inc`).
 - **Ballot**: electionId, nullifierHash (unique), ballotCommitment, castAt.
   No voter reference stored alongside. Anonymous ballots add `anonymous: true`.
 - **SemaphoreGroup**: per election, ordered member commitments plus versioned
@@ -122,22 +140,36 @@ Storage: Mongoose when `MONGODB_URI` is set, otherwise an in-memory store with t
 same interface so the prototype and tests run with zero infrastructure. The
 memory store optionally snapshots durable state (passkeys, ballots, audit,
 Semaphore groups) to `STORE_FILE` so it survives restarts; sessions and
-challenges stay ephemeral either way.
+challenges stay ephemeral either way. When MongoDB is configured but
+unreachable the API refuses to boot (exit 1) rather than silently falling back
+to memory for voting storage; `NODE_ENV=production` requires `MONGODB_URI`.
+Required unique indexes (passkeys, enrollments, invitations) are created AND
+verified at boot — fail closed if any is missing. MongoDB enrolment,
+versioning, freeze, invitation redeem, and nullifier writes use replica-set
+transactions or atomic conditional updates (Atlas provides replica sets).
 
 ## 6. Frontend pages (MVP)
 
 1. **Landing** — what CivicProof is, prototype disclaimer, Verified-vs-Simulated panel.
-2. **Election Dashboard** — fictional elections, status, turnout (from audit counts).
-3. **Voting Interface** — fictional roll check, real WebAuthn passkey
-   registration/authentication (`@simplewebauthn/browser`), then a standard
-   session ballot or an anonymous Semaphore ballot (client-side identity,
-   commitment enrollment, in-browser proving, anonymous submission with
-   accept/duplicate/failure states and audit-evidence links).
+2. **Election Dashboard** — fictional elections, status, access badges, turnout
+   (from audit counts), plus a signed-in "your eligible election" card.
+3. **Voting Interface** — eligibility (fictional roll + PIN, or invitation gate
+   linking to redemption), real WebAuthn passkey registration/authentication
+   (`@simplewebauthn/browser`), then a standard session ballot or an anonymous
+   Semaphore ballot (client-side identity, commitment enrollment, in-browser
+   proving, anonymous submission with accept/duplicate/failure states and
+   audit-evidence links).
 4. **Audit Explorer** — public event table, filter by election/type, hash display.
 5. **Integrity Dashboard** — read-only AI explanation panel: deterministic rule
    findings plus Muse Spark interpretation when `MUSE_SPARK_API_KEY` is set,
    evidence links into the audit explorer, and a Q&A box. Labelled `Live model`
    or `Rules only` accordingly.
+6. **Invite redemption** — paste a single-use code, register a personal passkey,
+   authenticate, continue to voting. Invitation approval is organizer-managed
+   testing access, not identity verification.
+7. **Organizer portal** — sign-in + one-time setup; dashboard with per-election
+   stats and open/close actions; create/edit drafts; issue (codes shown once),
+   list (hashes only), and revoke invitations; freeze groups; delete drafts.
 
 Mobile-first, responsive; Mantine components + Tailwind utilities.
 
@@ -160,8 +192,22 @@ Mobile-first, responsive; Mantine components + Tailwind utilities.
   generated in-browser, server-side verification with the official library,
   session-free anonymous submission, atomic restart-durable nullifiers, AI
   coverage of proof failures, 16-test real-proving suite.
-- **Phase 5**: `contracts/` anchor on testnet via Hardhat/ethers, ballot
-  secrecy + verifiable tally research, admin tooling, hardening review.
+- **Phase 5 (done — this increment)**: organizer-managed multi-user testing on
+  MongoDB: scrypt organizer auth with single-use setup bootstrap, draft/open/
+  closed lifecycle, expiring single-use hash-stored invitations with uniform
+  failure responses, invitation-gated passkey registration, explicit group
+  freeze, fail-closed boot with verified unique indexes, replica-set
+  transactions for redeem/enrol/versioning, strict rate limits, organizer
+  portal + invite UI, 19-test real-MongoDB integration suite.
+- **Phase 4.5 (done — this increment)**: cross-mode double-vote prevention and
+  lifecycle hardening: required server-enforced votingMode per election (mode
+  mismatch rejected 409 before any proof work; locked after draft),
+  draft → enrolment → frozen → voting → closed with phase-gated registration /
+  enrolment / ballots, persisted frozen roots with strict post-freeze root
+  verification, one-credential-per-voter-record enforcement, Atlas verification
+  script + Atlas-capable integration suite, lifecycle UI, verification report.
+- **Phase 6**: `contracts/` anchor on testnet via Hardhat/ethers, ballot
+  secrecy + verifiable tally research, further hardening review.
 
 ## 8. Threat-model notes (prototype)
 
@@ -182,9 +228,28 @@ Mobile-first, responsive; Mantine components + Tailwind utilities.
   timing can link voters to commitments; no network-level protections exist.
 - Semaphore trust assumptions apply: Groth16 trusted setup, proving-key
   distribution, and correct circuit implementation in the library.
-- Group enrollment is serialized per election within one process; multi-process
-  deployments would need transactions. Nullifier recording is atomic in both
-  stores (sync check-and-set in memory, unique index in MongoDB).
+- MongoDB enrollment, group versioning, freeze, invitation redemption, and
+  nullifier recording are transaction-safe / atomic conditional writes, proven
+  by concurrent integration tests; the memory store stays single-process.
+- Organizer passwords use scrypt (Node built-in) with a dummy-hash path for
+  unknown users; setup token is single-use with constant-time compare; voter
+  and organizer sessions are rejected on each other's routes. Invitation codes
+  are 192-bit bearer secrets with uniform failure responses and strict
+  per-IP rate limiting — but the limiter is in-memory and single-process, so
+  multi-replica deployments need a shared store (e.g. Redis).
+- Voting mode is enforced server-side (stores + routes), never by hiding UI:
+  anonymous elections reject standard ballots, standard elections reject
+  enrolment and proofs. Legacy seed elections without a mode still allow both
+  paths (documented demo grandfathering, covered by a test).
+- Public audit refs are hashes (credential ids, nullifiers) or public values
+  (commitments, roots) — never voter refs, tokens, or secrets. The same
+  credential hash appears in its registration and authentication events, which
+  links those two events to each other by design (needed for failure-rate
+  analysis); it reveals nothing about the voter.
+- Microscopic race accepted: an enrolment landing in the same instant as a
+  freeze could miss the persisted root and have its later ballot rejected with
+  a clear audit trail. It cannot double-vote or corrupt the group; the voter
+  re-enrols only if never enrolled (voter-level uniqueness still holds).
 - Blockchain anchoring is NOT implemented: the audit log is server-published.
 - Audit log carries correlation hashes only; ballots store no voter reference.
 - Secrets live only in `.env` (git-ignored); `.env.example` documents keys.

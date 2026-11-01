@@ -8,6 +8,7 @@ const links = [
   { to: '/vote', label: 'Vote' },
   { to: '/audit', label: 'Audit explorer' },
   { to: '/integrity', label: 'Integrity' },
+  { to: '/organizer', label: 'Organizer' },
 ];
 
 function BrandMark() {

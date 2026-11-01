@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
 import { buildRouter } from './routes/index.js';
+import { buildOrganizerRouter } from './routes/organizer.js';
 import { createMuseClientFromConfig } from './ai/muse.js';
 
 /**
@@ -21,6 +22,7 @@ export function createApp(store, { aiClient, webauthn } = {}) {
   app.use(express.json({ limit: '64kb' }));
 
   app.use('/api', buildRouter(store, routerOptions));
+  app.use('/api/organizer', buildOrganizerRouter(store));
   app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Central error handler: validation/store errors carry .status; never leak stacks.

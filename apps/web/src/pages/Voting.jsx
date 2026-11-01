@@ -30,7 +30,7 @@ export function Voting() {
   const [offline, setOffline] = useState(false);
   const [electionId, setElectionId] = useState(params.get('election') ?? '');
   const [step, setStep] = useState(0);
-  const [voterRef, setVoterRef] = useState('');
+  const [voterRef, setVoterRef] = useState(params.get('voter') ?? '');
   const [pin, setPin] = useState('');
   const [registered, setRegistered] = useState(false);
   const [csrfToken, setCsrfToken] = useState('');
@@ -44,7 +44,7 @@ export function Voting() {
       .then((data) => {
         setElections(data.elections);
         if (!params.get('election')) {
-          const firstOpen = data.elections.find((e) => e.status === 'open');
+          const firstOpen = data.elections.find((e) => ['open', 'enrolment', 'frozen', 'voting'].includes(e.status));
           if (firstOpen) setElectionId(firstOpen.id);
         }
       })
@@ -58,6 +58,13 @@ export function Voting() {
     () => elections?.find((e) => e.id === electionId) ?? null,
     [elections, electionId],
   );
+
+  // Suggest the election's configured path; the server enforces the mode and
+  // rejects the other path with a clear error if the voter switches.
+  useEffect(() => {
+    if (election?.votingMode === 'anonymous') setBallotMode('anonymous');
+    else if (election?.votingMode === 'standard') setBallotMode('standard');
+  }, [election]);
   const rollForElection = useMemo(
     () => demoRoll.filter((v) => v.electionId === electionId),
     [electionId],
@@ -197,9 +204,9 @@ export function Voting() {
       <Select
         label="Election"
         mt="md"
-        data={(elections.filter((e) => e.status === 'open') ?? []).map((e) => ({
+        data={(elections.filter((e) => ['open', 'enrolment', 'frozen', 'voting'].includes(e.status)) ?? []).map((e) => ({
           value: e.id,
-          label: e.title,
+          label: `${e.title} (${e.status})`,
         }))}
         value={electionId}
         onChange={(id) => id && resetAfterElectionChange(id)}
@@ -207,75 +214,108 @@ export function Voting() {
 
       {election && (
         <Stepper active={step} mt="xl" size="sm">
-          <Stepper.Step label="Eligibility" description="Fictional roll check">
+          <Stepper.Step
+            label="Eligibility"
+            description={election.access === 'invitation' ? 'Invitation required' : 'Fictional roll check'}
+          >
             <Card withBorder radius="md" padding="md" mt="md">
-              <Text size="sm" c="dimmed">
-                Only voters on the fictional roll may register. Pick a demo identity below —
-                no real identity is checked or stored.
-              </Text>
-              <Group mt="sm" grow>
-                <TextInput
-                  label="Voter reference"
-                  placeholder="PM-1001"
-                  value={voterRef}
-                  onChange={(e) => setVoterRef(e.target.value)}
-                />
-                <TextInput
-                  label="Demo PIN"
-                  placeholder="4921"
-                  inputMode="numeric"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                />
-              </Group>
-              <Button
-                onClick={registerPasskey}
-                mt="md"
-                color="teal"
-                disabled={!voterRef.trim() || !pin.trim()}
-              >
-                Register a passkey
-              </Button>
-              <Text size="sm" mt="md" fw={600}>
-                Demo roll for this election <FictionalBadge />
-              </Text>
-              <Table mt="xs" withTableBorder>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Ref</Table.Th>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>PIN</Table.Th>
-                    <Table.Th />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {rollForElection.map((v) => (
-                    <Table.Tr key={v.voterRef}>
-                      <Table.Td>
-                        <Code>{v.voterRef}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{v.displayName}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Code>{v.pin}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          onClick={() => {
-                            setVoterRef(v.voterRef);
-                            setPin(v.pin);
-                          }}
-                        >
-                          Use
-                        </Button>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+              {election.access === 'invitation' ? (
+                <>
+                  <Text size="sm" c="dimmed">
+                    This election is invitation-only. Redeem your single-use code to register
+                    a passkey, then return here with your voter reference to authenticate.
+                  </Text>
+                  <Button
+                    component={Link}
+                    to={`/invite?election=${electionId}`}
+                    mt="sm"
+                    variant="light"
+                  >
+                    Redeem an invitation
+                  </Button>
+                  <TextInput
+                    label="Voter reference"
+                    placeholder="INV-…"
+                    mt="sm"
+                    value={voterRef}
+                    onChange={(e) => setVoterRef(e.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text size="sm" c="dimmed">
+                    Only voters on the fictional roll may register. Pick a demo identity below —
+                    no real identity is checked or stored.
+                  </Text>
+                  <Group mt="sm" grow>
+                    <TextInput
+                      label="Voter reference"
+                      placeholder="PM-1001"
+                      value={voterRef}
+                      onChange={(e) => setVoterRef(e.target.value)}
+                    />
+                    <TextInput
+                      label="Demo PIN"
+                      placeholder="4921"
+                      inputMode="numeric"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                    />
+                  </Group>
+                  <Button
+                    onClick={registerPasskey}
+                    mt="md"
+                    color="teal"
+                    disabled={!voterRef.trim() || !pin.trim()}
+                  >
+                    Register a passkey
+                  </Button>
+                </>
+              )}
+              {election.access !== 'invitation' && (
+                <>
+                  <Text size="sm" mt="md" fw={600}>
+                    Demo roll for this election <FictionalBadge />
+                  </Text>
+                  <Table mt="xs" withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Ref</Table.Th>
+                        <Table.Th>Name</Table.Th>
+                        <Table.Th>PIN</Table.Th>
+                        <Table.Th />
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {rollForElection.map((v) => (
+                        <Table.Tr key={v.voterRef}>
+                          <Table.Td>
+                            <Code>{v.voterRef}</Code>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{v.displayName}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Code>{v.pin}</Code>
+                          </Table.Td>
+                          <Table.Td>
+                            <Button
+                              size="xs"
+                              variant="light"
+                              onClick={() => {
+                                setVoterRef(v.voterRef);
+                                setPin(v.pin);
+                              }}
+                            >
+                              Use
+                            </Button>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </>
+              )}
               <Text size="sm" c="dimmed" mt="sm">
                 Already registered a passkey for this voter?{' '}
                 <Button

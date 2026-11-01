@@ -22,4 +22,10 @@ export const config = {
   // Optional JSON snapshot path so the memory store survives API restarts.
   // Unset by default (pure memory); MongoDB remains the preferred durable backend.
   storeFile: process.env.STORE_FILE || null,
+  isProduction: process.env.NODE_ENV === 'production',
+  // One-time token that authorises creation of the founding organizer account.
+  // Single-use (consumed atomically on first success) and checked with a
+  // constant-time compare. Unset disables the bootstrap endpoint entirely.
+  organizerSetupToken: process.env.ORGANIZER_SETUP_TOKEN || null,
+  organizerSessionTtlMs: Number(process.env.ORGANIZER_SESSION_TTL_MS ?? 3600000),
 };

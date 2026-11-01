@@ -166,17 +166,96 @@ indexes. Without MongoDB, set `STORE_FILE` (see `apps/api/.env.example`) to
 snapshot the memory store to disk across restarts; sessions and challenges
 stay ephemeral either way.
 
+## Organizer-managed testing with MongoDB (Phase 5)
+
+For controlled multi-user testing, organizers manage fictional elections in a
+shared MongoDB (Atlas or any replica set) and admit testers via single-use
+invitations. The memory store remains for zero-infra demos, but production
+boots refuse to start without a reachable MongoDB — never a silent fallback.
+
+Organizer flow (`/organizer` in the UI, `/api/organizer/*` on the API):
+
+1. The deployer sets a one-time `ORGANIZER_SETUP_TOKEN`; the founding organizer
+   account is created through `/api/organizer/setup`, which the token then
+   unlocks exactly once (atomic consume, constant-time compare).
+2. Organizers sign in with a password (scrypt hash, dummy-hash path for unknown
+   users — no username oracle) into a hardened `cp_org` session cookie.
+3. Organizers create draft elections (title, ballot choices, invitation or
+   demo-roll eligibility, and a required voting mode: `standard` or
+   `anonymous`), edit drafts, issue expiring single-use invitations, then run
+   the lifecycle draft → enrolment → frozen → voting → closed. Drafts are
+   organizer-only; the voting mode locks once an election leaves draft, and
+   every transition is an atomic conditional write (legacy `open` elections
+   from seeds keep working with both ballot paths).
+4. Plaintext invitation codes are returned **once at creation**; only SHA-256
+   hashes are stored. Unknown, revoked, expired, and mismatched codes all yield
+   one uniform 403 (or `{ valid: false }` on the pre-check), under a strict
+   per-IP rate limit — no validity oracle.
+
+Voter flow (`/invite` + `/vote`): paste the code, register a personal WebAuthn
+passkey, authenticate, then vote — anonymously via the Phase 4 Semaphore flow
+(enrol during enrolment, vote once voting opens) or with a standard session
+ballot. The server enforces the election's mode: anonymous elections reject
+standard ballots, standard elections reject enrolment and proofs, so no voter
+can vote twice by switching paths. One enrolment per voter per election, one
+credential per voter record, duplicate nullifiers rejected atomically.
+
+Safety properties (all covered by real-MongoDB integration tests, not mocks):
+
+- Required unique indexes are created **and verified at boot**; the API exits
+  rather than running without them.
+- Invitation redeem + passkey save runs in one replica-set transaction; the
+  concurrent-redeem race resolves to exactly one winner.
+- Enrolment versioning, freeze gating, and nullifier recording are atomic
+  conditional writes; concurrent duplicates collapse to a single accepted ballot.
+- Voting mode is server-enforced per election (never UI-only): cross-mode
+  submissions are rejected with 409 before any proof work, and the mode cannot
+  change after draft.
+- The freeze persists the approved group root; frozen elections verify proofs
+  only against that root, and late enrolment is rejected by phase.
+- Role separation is enforced both ways: voter sessions are rejected on
+  organizer routes, and organizer sessions are rejected on voter routes.
+- Public APIs (group snapshots, audit, invitation lists) expose no tokens,
+  secrets, or voter-to-ballot links.
+
+Deployment notes: Atlas clusters provide the replica set transactions need;
+allowlist the API host's IP (a `MongooseServerSelectionError` at boot almost
+always means the IP allowlist). Production also needs `WEBAUTHN_ORIGIN` +
+`WEBAUTHN_RP_ID` for the real HTTPS host, `COOKIE_SECURE=true`, and a tight
+`CORS_ORIGINS`. The in-memory rate limiter is single-process — a shared store
+(e.g. Redis) is needed behind multiple API replicas.
+
+Known limits carried forward: small anonymity sets, enrolment-timing
+linkability, no tally privacy or verified tally, nothing on-chain. Cross-mode
+double voting is now impossible on mode-configured elections (legacy seed
+elections without a mode still allow both paths for demo purposes). One human
+redeeming two invitations with two different passkeys still yields two voter
+records — unpreventable without real identity proofing, which is out of scope
+for fictional test data; what IS enforced is one passkey per voter record and
+one credential per voter record per election.
+
 ## Tests
 
 ```powershell
-npm test   # backend: Semaphore + WebAuthn + voting + API validation + AI suite (node:test + supertest)
+npm test   # backend: organizer/Mongo + Semaphore + WebAuthn + voting + API validation + AI suite (node:test + supertest)
 ```
 
 Ceremony completion is tested with injected fakes (no authenticator exists in
 CI); one test uses the real SimpleWebAuthn option generator, and the running
 server's options output is smoke-tested over HTTP. Zero-knowledge tests use
 **real proving and verification** (deterministic identities, one shared proof
-corpus per run; proving keys download once and cache in the OS temp dir).
+corpus per run; proving keys download once and cache in the OS temp dir). The
+organizer suite (`tests/organizer-mongo.test.js`) runs against **real MongoDB**
+(an in-memory replica set with WiredTiger, so transactions behave like Atlas)
+and covers bootstrap/login, role escalation, election lifecycle, voting-mode
+enforcement, phase gates, invitation uniformity/revocation/races, concurrent
+enrolment, freeze with persisted roots, real-proof validation, concurrent
+duplicate nullifiers, restart persistence, and cross-election isolation. First
+run downloads the MongoDB test binary. To run the same suite against Atlas:
+`MONGODB_TEST_URI='<scratch-db-uri>' node --test --test-force-exit tests/organizer-mongo.test.js`
+from `apps/api` (scratch database only — it is wiped and dropped). A lighter
+connectivity + index check is `node scripts/atlas-verify.mjs`, which never
+prints the URI.
 
 ## Honest scope labels
 

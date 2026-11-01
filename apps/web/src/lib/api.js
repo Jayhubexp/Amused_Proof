@@ -56,6 +56,37 @@ export async function apiPostAnon(path, payload) {
   return body;
 }
 
+export async function apiPatch(path, payload, { csrfToken } = {}) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (csrfToken) headers['x-csrf-token'] = csrfToken;
+  const res = await fetch(path, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error ?? `Request failed (${res.status}).`);
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+export async function apiDelete(path, { csrfToken } = {}) {
+  const headers = { Accept: 'application/json' };
+  if (csrfToken) headers['x-csrf-token'] = csrfToken;
+  const res = await fetch(path, { method: 'DELETE', headers, credentials: 'include' });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error ?? `Request failed (${res.status}).`);
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
 /** SHA-256 hex using the Web Crypto API (established primitive, no custom crypto). */
 export async function sha256Hex(text) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
