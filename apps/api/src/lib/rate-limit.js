@@ -1,10 +1,8 @@
-// Minimal in-memory sliding-window rate limiter for abuse-sensitive routes
-// (organizer auth, invitation attempts, anonymous submissions). Keyed by
-// client IP + route bucket. Single-process by design: state does not span
-// processes or restarts — a documented prototype limitation, not a security
-// boundary. Real deployments need a shared store (e.g. Redis).
-
-const buckets = new Map(); // key -> array of epoch-ms timestamps
+// Sliding-window rate limiter with a pluggable backing store. Default is
+// in-memory (tests, local dev). Production with MongoDB configures the Mongo
+// store at boot (see index.js), so buckets are shared across every serverless
+// function instance instead of resetting per instance.
+// Abuse friction, not a security boundary: see docs/ARCHITECTURE.md.
 
 function prune(now, windowMs, stamps) {
   const cutoff = now - windowMs;
@@ -14,23 +12,61 @@ function prune(now, windowMs, stamps) {
   return stamps;
 }
 
-export function checkRateLimit(key, { windowMs, max }) {
-  const now = Date.now();
-  const stamps = prune(now, windowMs, buckets.get(key) ?? []);
-  buckets.set(key, stamps);
+function decide(stamps, now, windowMs, max) {
   if (stamps.length >= max) {
     const retryAfterMs = windowMs - (now - stamps[0]);
     return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
   }
-  stamps.push(now);
   return { allowed: true, retryAfterSec: 0 };
+}
+
+export class MemoryRateLimitStore {
+  constructor() {
+    this.buckets = new Map(); // key -> array of epoch-ms timestamps
+  }
+
+  check(key, { windowMs, max }) {
+    const now = Date.now();
+    const stamps = prune(now, windowMs, this.buckets.get(key) ?? []);
+    this.buckets.set(key, stamps);
+    const verdict = decide(stamps, now, windowMs, max);
+    if (verdict.allowed) stamps.push(now);
+    return verdict;
+  }
+
+  reset() {
+    this.buckets.clear();
+  }
+}
+
+export const memoryRateLimitStore = new MemoryRateLimitStore();
+let activeStore = memoryRateLimitStore;
+
+/** Swap the backing store (production boot installs the Mongo store). */
+export function configureRateLimitStore(store) {
+  activeStore = store;
+}
+
+/** Check (and record, when allowed) one attempt. May return a Promise. */
+export function checkRateLimit(key, opts) {
+  return activeStore.check(key, opts);
 }
 
 /** Express middleware factory. Counts every request, including rejected ones. */
 export function rateLimit({ windowMs, max, bucket }) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
-    const result = checkRateLimit(`${bucket}:${ip}`, { windowMs, max });
+    let result;
+    try {
+      result = await checkRateLimit(`${bucket}:${ip}`, { windowMs, max });
+    } catch (err) {
+      // Limiter outage (e.g. MongoDB blip) fails OPEN: rate limiting is abuse
+      // friction, and erroring every request would turn an outage into a
+      // full denial of service. The failure is logged, not silent.
+      console.error(`CivicProof: rate limiter unavailable, allowing request (${err.message}).`);
+      next();
+      return;
+    }
     res.setHeader('X-RateLimit-Limit', String(max));
     if (!result.allowed) {
       res.setHeader('Retry-After', String(result.retryAfterSec));
@@ -40,9 +76,9 @@ export function rateLimit({ windowMs, max, bucket }) {
   };
 }
 
-/** Test-only reset so suites can isolate rate-limit windows. */
+/** Test-only reset of the in-memory buckets. */
 export function resetRateLimits() {
-  buckets.clear();
+  memoryRateLimitStore.reset();
 }
 
 // Named buckets. Strict buckets guard secrets (passwords, invitation tokens);

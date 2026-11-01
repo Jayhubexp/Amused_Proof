@@ -193,6 +193,7 @@ export async function ensureMongoIndexes() {
     ElectionModel, PasskeyModel, BallotModel, SemaphoreGroupModel,
     SemaphoreEnrollmentModel, AuditEventModel, WebAuthnChallengeModel,
     SessionModel, OrganizerModel, BootstrapModel, InvitationModel, CounterModel,
+    RateLimitModel,
   ];
   await Promise.all(models.map((model) => model.createIndexes()));
   for (const [model, keys, label] of REQUIRED_UNIQUE_INDEXES) {
@@ -203,6 +204,16 @@ export async function ensureMongoIndexes() {
     if (!found) throw new Error(`CivicProof: required unique index missing: ${label}`);
   }
 }
+
+// Rate-limit buckets shared across serverless instances. Stale buckets expire
+// via TTL (longest window is 1h; 2h of inactivity reaps the document).
+const rateLimitSchema = new mongoose.Schema({
+  _id: String, // "<bucket>:<client-ip>"
+  stamps: [Number], // epoch-ms attempt timestamps, pruned on read
+  updatedAt: Number,
+});
+rateLimitSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 7200 });
+export const RateLimitModel = mongoose.model('RateLimit', rateLimitSchema);
 
 function keysMatch(actual, expected) {
   const aKeys = Object.keys(actual);

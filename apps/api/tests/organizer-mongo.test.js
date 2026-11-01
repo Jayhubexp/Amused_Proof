@@ -21,7 +21,9 @@ import { MongoStore } from '../src/store/mongo.js';
 import { REQUIRED_UNIQUE_INDEXES, ensureMongoIndexes } from '../src/models/index.js';
 import { demoOrganizers } from '../src/seed/fictional.js';
 import { seedDemoOrganizers } from '../src/seed/demo-organizers.js';
-import { resetRateLimits } from '../src/lib/rate-limit.js';
+import { configureRateLimitStore, memoryRateLimitStore, resetRateLimits } from '../src/lib/rate-limit.js';
+import { MongoRateLimitStore } from '../src/lib/rate-limit-mongo.js';
+import { RateLimitModel } from '../src/models/index.js';
 import { commitmentMessage, electionScope } from '../src/zk/semaphore.js';
 
 const SETUP_TOKEN = 'integration-test-setup-token';
@@ -508,6 +510,39 @@ test('invitation attempts are rate-limited without leaking validity', async () =
     .post('/api/webauthn/register/options')
     .send({ invitationToken: fakeToken('ef'), electionId: election.id });
   assert.equal(viaRegister.status, 429);
+});
+
+test('Mongo rate-limit buckets persist across store instances (serverless-safe)', async () => {
+  // Simulates two serverless function instances sharing one MongoDB: buckets
+  // recorded through one store instance are enforced through another.
+  const key = `probe:${Date.now()}`;
+  const window = { windowMs: 60000, max: 3 };
+  const first = new MongoRateLimitStore();
+  const second = new MongoRateLimitStore();
+  assert.equal((await first.check(key, window)).allowed, true);
+  assert.equal((await first.check(key, window)).allowed, true);
+  assert.equal((await second.check(key, window)).allowed, true);
+  const blocked = await second.check(key, window);
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.retryAfterSec >= 1);
+  assert.ok(await RateLimitModel.findById(key).lean());
+
+  // The wired middleware path also honors the Mongo store end to end.
+  configureRateLimitStore(new MongoRateLimitStore());
+  try {
+    for (let i = 0; i < 30; i += 1) {
+      const res = await request(app).post('/api/invitations/validate').send({ invitationToken: fakeToken('aa') });
+      assert.equal(res.status, 200);
+    }
+    assert.equal(
+      (await request(app).post('/api/invitations/validate').send({ invitationToken: fakeToken('aa') })).status,
+      429,
+    );
+  } finally {
+    // Restore the shared instance (not a fresh one) so the file's
+    // resetRateLimits() isolation keeps working for later tests.
+    configureRateLimitStore(memoryRateLimitStore);
+  }
 });
 
 // -- registration ---------------------------------------------------------------

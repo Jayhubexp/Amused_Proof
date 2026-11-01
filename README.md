@@ -65,34 +65,25 @@ ship on a live deployment. Real organizer onboarding uses the single-use
 
 ## Deploy to Vercel
 
-One project serves both the SPA and the API (same origin, so `SameSite=Lax`
-session cookies work). `vercel.json` builds `apps/web` and rewrites `/api/*`
-to the serverless Express adapter in `/api/index.js`; client-side routes fall
-back to `/index.html`.
+One project hosts two services from this monorepo via
+[Vercel Services](https://vercel.com/docs/services) (see root `vercel.json`
+and `docs/VERCEL.md`): the Vite SPA at `/` and the Express API at `/api/*`
+(entrypoint `apps/api/src/index.js`, which also still runs standalone via
+`npm run dev:api`). Same-origin serving is load-bearing — session cookies are
+`SameSite=Lax` and would not reach a cross-origin API.
 
 1. Push the repo to GitHub and import it in Vercel (root directory: repository
-   root; build settings come from `vercel.json`, no dashboard overrides needed).
+   root, Framework Preset: **Services**).
 2. Create an Atlas cluster + database user, and allowlist `0.0.0.0/0` (Vercel
    egress IPs are dynamic).
-3. Set production environment variables in the Vercel dashboard (see table
-   below), using the final host you will share — passkeys bind to it.
+3. Set production environment variables (full table in `docs/VERCEL.md`),
+   using the final host you will share — passkeys bind to it.
 4. Deploy, then visit `/organizer/login` → First-time setup with your
    `ORGANIZER_SETUP_TOKEN`, create elections, and walk the voter flow once.
 
-| Variable | Required | Notes |
-|---|---|---|
-| `MONGODB_URI` | Yes | Atlas URI; boot fails closed without it |
-| `ORGANIZER_SETUP_TOKEN` | Yes | 32-byte hex; single-use bootstrap |
-| `WEBAUTHN_RP_ID` | Yes | Production host, no scheme (e.g. `my-app.vercel.app`) |
-| `WEBAUTHN_ORIGIN` | Yes | `https://` + host, must match exactly |
-| `COOKIE_SECURE` | Yes | `true` |
-| `CORS_ORIGINS` | Yes | `https://` + host |
-| `MUSE_SPARK_API_KEY` | No | Without it, integrity runs rules-only |
-| `NODE_ENV` | Auto | Vercel sets `production` |
-
-Never set `DEMO_ORGANIZERS` or `STORE_FILE` in production. Expect slow first
-requests on cold starts (Atlas connect + proof-artifact fetch); later requests
-reuse the warm instance.
+Read `docs/DEPLOYMENT_READINESS.md` before sharing the link: no blockers were
+found, but it lists the first-deploy verifications (test run, build-log
+checks, refresh/asset checks) that only a real deploy can confirm.
 
 ## AI integrity assistant (Phase 2)
 

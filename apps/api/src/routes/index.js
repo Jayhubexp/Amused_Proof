@@ -36,7 +36,7 @@ function clientIp(req) {
 // election-mismatched tokens all yield one uniform 403 (no validity oracle),
 // and attempts are strictly rate-limited per IP.
 async function registerOptionsForInvitation(req, res, store, webauthn, election, invitationToken) {
-  const attempt = checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
+  const attempt = await checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
   if (!attempt.allowed) {
     res.setHeader('Retry-After', String(attempt.retryAfterSec));
     return res.status(429).json({ error: 'Too many attempts. Try again later.' });
@@ -214,7 +214,7 @@ export function buildRouter(store, { aiClient = null, webauthn = defaultWebAuthn
   // inside register/verify, so there is deliberately no separate redeem
   // endpoint whose window could be raced.
   router.post('/invitations/validate', asyncHandler(async (req, res) => {
-    const attempt = checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
+    const attempt = await checkRateLimit(`invitation:${clientIp(req)}`, RATE_LIMITS.invitation);
     if (!attempt.allowed) {
       res.setHeader('Retry-After', String(attempt.retryAfterSec));
       return res.status(429).json({ error: 'Too many attempts. Try again later.' });
