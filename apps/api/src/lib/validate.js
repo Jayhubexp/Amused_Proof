@@ -64,18 +64,49 @@ export function requireSlug(value, field) {
   return requireId(value, field);
 }
 
-export function requireCandidates(value, field = 'candidates') {
-  if (!Array.isArray(value) || value.length < 2 || value.length > 20) {
-    fail(`Invalid ${field}: expected 2-20 ballot choices.`);
+export const ELECTION_TYPES = ['candidate', 'referendum', 'poll'];
+
+export function requireElectionType(value, field = 'election type') {
+  if (!ELECTION_TYPES.includes(value)) {
+    fail(`Invalid ${field}: expected "candidate", "referendum", or "poll".`);
+  }
+  return value;
+}
+
+export function requireCandidates(value, field = 'candidates', { electionType = 'candidate' } = {}) {
+  const min = 2;
+  const max = electionType === 'referendum' ? 2 : 20;
+  if (!Array.isArray(value) || value.length < min || value.length > max) {
+    if (electionType === 'referendum') {
+      fail('A referendum needs exactly two options, such as "Yes" and "No".');
+    }
+    fail('Add at least two ballot choices (at most 20).');
   }
   return value.map((candidate, index) => {
+    const label = `Choice ${index + 1}`;
     if (!candidate || typeof candidate !== 'object') {
-      fail(`Invalid ${field}[${index}]: expected an object.`);
+      fail(`${label} is invalid: each choice needs a name.`);
     }
-    return {
-      name: requireString(candidate.name, `${field}[${index}].name`, { max: 120 }),
-      party: requireString(candidate.party ?? 'Independent', `${field}[${index}].party`, { max: 120 }),
-    };
+    if (typeof candidate.name !== 'string' || candidate.name.trim().length === 0) {
+      fail(`${label} needs a name.`);
+    }
+    if (candidate.name.trim().length > 120 || candidate.name.length > 120) {
+      fail(`${label} name must be 120 characters or fewer.`);
+    }
+    const choice = { name: candidate.name.trim() };
+    // Party/affiliation is optional for every election type: referendums and
+    // polls never need one, and candidate races may omit it. Blank values are
+    // dropped (not defaulted) so stored choices stay honest.
+    if (candidate.party !== undefined && candidate.party !== null && String(candidate.party).trim() !== '') {
+      if (typeof candidate.party !== 'string') {
+        fail(`${label} party or affiliation must be text.`);
+      }
+      if (candidate.party.length > 120) {
+        fail(`${label} party or affiliation must be 120 characters or fewer.`);
+      }
+      choice.party = candidate.party.trim();
+    }
+    return choice;
   });
 }
 

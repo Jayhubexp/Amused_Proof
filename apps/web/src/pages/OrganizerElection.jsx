@@ -34,6 +34,27 @@ function fromLocalInput(value) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+const TYPE_META = {
+  candidate: {
+    label: 'Candidate election',
+    choicesTitle: 'Candidates (at least two)',
+    showParty: true,
+    fixedChoices: false,
+  },
+  referendum: {
+    label: 'Referendum (Yes/No)',
+    choicesTitle: 'Referendum options (exactly two)',
+    showParty: false,
+    fixedChoices: true,
+  },
+  poll: {
+    label: 'General poll',
+    choicesTitle: 'Poll options (at least two)',
+    showParty: false,
+    fixedChoices: false,
+  },
+};
+
 export function OrganizerElection() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -47,6 +68,8 @@ export function OrganizerElection() {
   const [candidates, setCandidates] = useState([{ name: '', party: '' }, { name: '', party: '' }]);
   const [access, setAccess] = useState('invitation');
   const [votingMode, setVotingMode] = useState('anonymous');
+  const [electionType, setElectionType] = useState('candidate');
+  const [fieldErrors, setFieldErrors] = useState({ title: '', choices: [] });
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [inviteCount, setInviteCount] = useState(5);
@@ -75,6 +98,8 @@ export function OrganizerElection() {
       setCandidates(found.candidates.map((c) => ({ name: c.name, party: c.party ?? '' })));
       setAccess(found.access ?? 'invitation');
       setVotingMode(found.votingMode ?? 'anonymous');
+      setElectionType(found.electionType ?? 'candidate');
+      setFieldErrors({ title: '', choices: [] });
       setStartsAt(toLocalInput(found.startsAt));
       setEndsAt(toLocalInput(found.endsAt));
       const invites = await organizerGet(`/api/organizer/elections/${id}/invitations`);
@@ -92,18 +117,50 @@ export function OrganizerElection() {
     load();
   }, [load]);
 
-  const trimmedCandidates = candidates
-    .map((c) => ({ name: c.name.trim(), party: c.party.trim() }))
-    .filter((c) => c.name.length > 0);
-  const formValid = title.trim().length > 0 && trimmedCandidates.length >= 2;
   const editable = isNew || election?.status === 'draft';
+  const typeMeta = TYPE_META[electionType] ?? TYPE_META.candidate;
+
+  function validateForm() {
+    const titleError = title.trim() ? '' : 'Enter an election title.';
+    const choiceErrors = candidates.map((c) => {
+      const err = {};
+      if (!c.name.trim()) err.name = 'Enter a name for this choice.';
+      else if (c.name.trim().length > 120) err.name = 'Keep this name under 120 characters.';
+      if (electionType === 'candidate' && c.party.trim().length > 120) {
+        err.party = 'Keep the party or affiliation under 120 characters.';
+      }
+      return err;
+    });
+    return { title: titleError, choices: choiceErrors };
+  }
+
+  function changeElectionType(next) {
+    setElectionType(next);
+    setFieldErrors({ title: '', choices: [] });
+    if (next === 'referendum') {
+      setCandidates([{ name: 'Yes', party: '' }, { name: 'No', party: '' }]);
+    } else {
+      setCandidates((prev) => prev.map((c) => (next === 'candidate' ? c : { name: c.name, party: '' })));
+    }
+  }
 
   async function save() {
     setStatus({ kind: 'idle', message: '' });
+    const errors = validateForm();
+    setFieldErrors(errors);
+    if (errors.title !== '' || errors.choices.some((c) => c.name || c.party)) {
+      setStatus({ kind: 'error', message: 'Fix the highlighted fields before saving.' });
+      return;
+    }
     const payload = {
       title: title.trim(),
       description: description.trim(),
-      candidates: trimmedCandidates,
+      electionType,
+      candidates: candidates
+        .filter((c) => c.name.trim())
+        .map((c) => (electionType === 'candidate' && c.party.trim()
+          ? { name: c.name.trim(), party: c.party.trim() }
+          : { name: c.name.trim() })),
       access,
       votingMode,
     };
@@ -118,6 +175,7 @@ export function OrganizerElection() {
       } else {
         const res = await organizerPatch(`/api/organizer/elections/${id}`, payload);
         setElection(res.election);
+        setFieldErrors({ title: '', choices: [] });
         setStatus({ kind: 'ok', message: 'Draft saved.' });
       }
     } catch (err) {
@@ -175,6 +233,10 @@ export function OrganizerElection() {
 
   function updateCandidate(index, field, value) {
     setCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+    setFieldErrors((prev) => ({
+      ...prev,
+      choices: prev.choices.map((err, i) => (i === index ? {} : err)),
+    }));
   }
 
   if (!isNew && !election && status.kind !== 'error') return <Loader />;
@@ -196,6 +258,9 @@ export function OrganizerElection() {
               <>
                 <Badge color={election?.status === 'open' ? 'teal' : election?.status === 'draft' ? 'yellow' : 'gray'} variant="light">
                   {election?.status}
+                </Badge>{' '}
+                <Badge color="grape" variant="light">
+                  {TYPE_META[election?.electionType]?.label ?? 'Candidate election'}
                 </Badge>{' '}
                 <Badge color="gray" variant="light">
                   {election?.access === 'invitation' ? 'invitation access' : 'demo-roll access'}
@@ -300,8 +365,12 @@ export function OrganizerElection() {
           label="Title"
           mt="sm"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setFieldErrors((prev) => ({ ...prev, title: '' }));
+          }}
           disabled={!editable}
+          error={fieldErrors.title || undefined}
         />
         <Textarea
           label="Description"
@@ -311,26 +380,49 @@ export function OrganizerElection() {
           disabled={!editable}
           minRows={2}
         />
+        <Select
+          label="Election type (locked after draft)"
+          description={
+            electionType === 'referendum'
+              ? 'A Yes/No question with exactly two options and no party field.'
+              : electionType === 'poll'
+                ? 'A general poll with two or more options and no party field.'
+                : 'A race between candidates. Party or affiliation is optional.'
+          }
+          mt="sm"
+          data={[
+            { value: 'candidate', label: 'Candidate election' },
+            { value: 'referendum', label: 'Referendum (Yes/No)' },
+            { value: 'poll', label: 'General poll' },
+          ]}
+          value={electionType}
+          onChange={(value) => value && changeElectionType(value)}
+          disabled={!editable}
+        />
         <Title order={4} size="sm" mt="md">
-          Ballot choices (at least two)
+          {typeMeta.choicesTitle}
         </Title>
         {candidates.map((candidate, index) => (
           <Group key={index} mt="xs" grow align="end">
             <TextInput
               label={index === 0 ? 'Name' : undefined}
-              placeholder={`Choice ${index + 1}`}
+              placeholder={electionType === 'referendum' ? (index === 0 ? 'Yes' : 'No') : `Choice ${index + 1}`}
               value={candidate.name}
               onChange={(e) => updateCandidate(index, 'name', e.target.value)}
               disabled={!editable}
+              error={fieldErrors.choices[index]?.name || undefined}
             />
-            <TextInput
-              label={index === 0 ? 'Party / slate (optional)' : undefined}
-              placeholder="Independent"
-              value={candidate.party}
-              onChange={(e) => updateCandidate(index, 'party', e.target.value)}
-              disabled={!editable}
-            />
-            {candidates.length > 2 && editable && (
+            {typeMeta.showParty && (
+              <TextInput
+                label={index === 0 ? 'Party / affiliation (optional)' : undefined}
+                placeholder="Independent"
+                value={candidate.party}
+                onChange={(e) => updateCandidate(index, 'party', e.target.value)}
+                disabled={!editable}
+                error={fieldErrors.choices[index]?.party || undefined}
+              />
+            )}
+            {candidates.length > 2 && editable && !typeMeta.fixedChoices && (
               <Button
                 variant="subtle"
                 color="red"
@@ -342,7 +434,7 @@ export function OrganizerElection() {
             )}
           </Group>
         ))}
-        {editable && (
+        {editable && !typeMeta.fixedChoices && (
           <Button
             mt="xs"
             variant="light"
@@ -392,7 +484,7 @@ export function OrganizerElection() {
           />
         </Group>
         {editable && (
-          <Button onClick={save} mt="md" color="teal" disabled={!formValid}>
+          <Button onClick={save} mt="md" color="teal">
             {isNew ? 'Create draft' : 'Save draft'}
           </Button>
         )}

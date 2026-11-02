@@ -116,11 +116,12 @@ export class MemoryStore {
     return {
       access: 'roll',
       groupFrozen: false,
+      electionType: 'candidate',
       ...election,
     };
   }
 
-  createElection({ id, title, description, candidates, startsAt, endsAt, access, votingMode, createdBy }) {
+  createElection({ id, title, description, electionType, candidates, startsAt, endsAt, access, votingMode, createdBy }) {
     if (this.elections.has(id)) {
       const err = new Error('An election with this id already exists.');
       err.status = 409;
@@ -133,6 +134,7 @@ export class MemoryStore {
       description: description ?? '',
       status: 'draft',
       access,
+      electionType: electionType ?? 'candidate',
       votingMode,
       startsAt: startsAt ?? now,
       endsAt: endsAt ?? now,
@@ -152,7 +154,7 @@ export class MemoryStore {
     return this.getElection(id);
   }
 
-  updateElection(id, { title, description, candidates, startsAt, endsAt, access, votingMode }) {
+  updateElection(id, { title, description, electionType, candidates, startsAt, endsAt, access, votingMode }) {
     const election = this.elections.get(id);
     if (!election) {
       const err = new Error('Unknown election.');
@@ -167,6 +169,7 @@ export class MemoryStore {
     Object.assign(election, {
       title: title ?? election.title,
       description: description ?? election.description,
+      electionType: electionType ?? election.electionType,
       candidates: candidates ?? election.candidates,
       startsAt: startsAt ?? election.startsAt,
       endsAt: endsAt ?? election.endsAt,

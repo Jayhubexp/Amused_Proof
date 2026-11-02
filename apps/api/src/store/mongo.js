@@ -68,13 +68,14 @@ export class MongoStore {
     return {
       access: 'roll',
       groupFrozen: false,
+      electionType: 'candidate',
       ...rest,
       id: _id,
       ballotsCast,
     };
   }
 
-  async createElection({ id, title, description, candidates, startsAt, endsAt, access, votingMode, createdBy }) {
+  async createElection({ id, title, description, electionType, candidates, startsAt, endsAt, access, votingMode, createdBy }) {
     const now = new Date().toISOString();
     try {
       await ElectionModel.create({
@@ -83,6 +84,7 @@ export class MongoStore {
         description: description ?? '',
         status: 'draft',
         access,
+        electionType: electionType ?? 'candidate',
         votingMode,
         startsAt: startsAt ?? now,
         endsAt: endsAt ?? now,
@@ -109,7 +111,7 @@ export class MongoStore {
     return this.getElection(id);
   }
 
-  async updateElection(id, { title, description, candidates, startsAt, endsAt, access, votingMode }) {
+  async updateElection(id, { title, description, electionType, candidates, startsAt, endsAt, access, votingMode }) {
     const election = await ElectionModel.findById(id).lean();
     if (!election) {
       const err = new Error('Unknown election.');
@@ -124,6 +126,7 @@ export class MongoStore {
     const update = { updatedAt: new Date().toISOString() };
     if (title !== undefined) update.title = title;
     if (description !== undefined) update.description = description;
+    if (electionType !== undefined) update.electionType = electionType;
     if (candidates !== undefined) update.candidates = candidates;
     if (startsAt !== undefined) update.startsAt = startsAt;
     if (endsAt !== undefined) update.endsAt = endsAt;

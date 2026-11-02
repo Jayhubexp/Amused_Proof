@@ -13,6 +13,7 @@ export const ElectionModel = mongoose.model(
     description: String,
     status: { type: String, default: 'open' }, // draft | enrolment | frozen | voting | closed | open (legacy) | certified (seed-only)
     access: { type: String, default: 'roll' }, // roll (fictional PIN roll) | invitation
+    electionType: { type: String, default: 'candidate' }, // candidate | referendum | poll
     votingMode: String, // standard | anonymous. Unset on legacy seeds (both paths allowed).
     startsAt: String,
     endsAt: String,

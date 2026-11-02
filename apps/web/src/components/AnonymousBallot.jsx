@@ -244,7 +244,7 @@ export function AnonymousBallot({ election, csrfToken, onAccepted }) {
             mt="sm"
           >
             {election.candidates.map((c) => (
-              <Radio key={c.id} value={c.id} label={`${c.name} (${c.party})`} mt="xs" />
+              <Radio key={c.id} value={c.id} label={c.party ? `${c.name} (${c.party})` : c.name} mt="xs" />
             ))}
           </Radio.Group>
           <Button

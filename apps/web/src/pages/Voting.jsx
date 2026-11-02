@@ -366,7 +366,7 @@ export function Voting() {
               <Card withBorder radius="md" padding="md" mt="md">
                 <Radio.Group label={`Your choice — ${election.title}`} value={candidateId} onChange={setCandidateId}>
                   {election.candidates.map((c) => (
-                    <Radio key={c.id} value={c.id} label={`${c.name} (${c.party})`} mt="xs" />
+                    <Radio key={c.id} value={c.id} label={c.party ? `${c.name} (${c.party})` : c.name} mt="xs" />
                   ))}
                 </Radio.Group>
                 <Text size="sm" c="dimmed" mt="sm">

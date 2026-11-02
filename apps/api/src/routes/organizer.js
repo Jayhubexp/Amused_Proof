@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import {
   requireAccessMode,
   requireCandidates,
+  requireElectionType,
   requireId,
   requireInt,
   requireIsoDate,
@@ -40,7 +41,11 @@ function assignCandidateIds(candidates) {
     let n = 2;
     while (seen.has(id)) id = `${base}-${n++}`;
     seen.add(id);
-    return { id, name: candidate.name, party: candidate.party };
+    // Party stays optional: omitted when blank so referendum/poll options and
+    // unaffiliated candidates store no placeholder.
+    return candidate.party === undefined
+      ? { id, name: candidate.name }
+      : { id, name: candidate.name, party: candidate.party };
   });
 }
 
@@ -165,10 +170,15 @@ export function buildOrganizerRouter(store) {
 
   router.post('/elections', authedMutation(async (req, res, session) => {
     const title = requireString(req.body?.title, 'title', { max: 160 });
-    const description = req.body?.description === undefined
+    const description = req.body?.description === undefined || req.body?.description === ''
       ? ''
       : requireString(req.body.description, 'description', { max: 2000 });
-    const candidates = assignCandidateIds(requireCandidates(req.body?.candidates));
+    const electionType = req.body?.electionType === undefined
+      ? 'candidate'
+      : requireElectionType(req.body.electionType);
+    const candidates = assignCandidateIds(
+      requireCandidates(req.body?.candidates, 'candidates', { electionType }),
+    );
     const startsAt = req.body?.startsAt === undefined ? undefined : requireIsoDate(req.body.startsAt, 'startsAt');
     const endsAt = req.body?.endsAt === undefined ? undefined : requireIsoDate(req.body.endsAt, 'endsAt');
     const access = req.body?.access === undefined ? 'invitation' : requireAccessMode(req.body.access);
@@ -181,6 +191,7 @@ export function buildOrganizerRouter(store) {
           id: candidate,
           title,
           description,
+          electionType,
           candidates,
           startsAt,
           endsAt,
@@ -199,13 +210,29 @@ export function buildOrganizerRouter(store) {
 
   router.patch('/elections/:id', authedMutation(async (req, res) => {
     const id = requireId(req.params.id, 'election id');
+    const current = await store.getElection(id);
+    if (!current) return res.status(404).json({ error: 'Unknown election.' });
+    // Choices validate against the election's effective type: the patched
+    // type when one is supplied, otherwise the stored (default candidate) type.
+    const electionType = req.body?.electionType === undefined
+      ? (current.electionType ?? 'candidate')
+      : requireElectionType(req.body.electionType);
     const patch = {};
     if (req.body?.title !== undefined) patch.title = requireString(req.body.title, 'title', { max: 160 });
     if (req.body?.description !== undefined) {
-      patch.description = requireString(req.body.description, 'description', { max: 2000 });
+      patch.description = req.body.description === ''
+        ? ''
+        : requireString(req.body.description, 'description', { max: 2000 });
     }
+    if (req.body?.electionType !== undefined) patch.electionType = electionType;
     if (req.body?.candidates !== undefined) {
-      patch.candidates = assignCandidateIds(requireCandidates(req.body.candidates));
+      patch.candidates = assignCandidateIds(
+        requireCandidates(req.body.candidates, 'candidates', { electionType }),
+      );
+    } else if (req.body?.electionType !== undefined) {
+      // Retyping without new choices: the stored choices must satisfy the new
+      // type (e.g. a three-way draft cannot become a referendum).
+      requireCandidates(current.candidates, 'candidates', { electionType });
     }
     if (req.body?.startsAt !== undefined) patch.startsAt = requireIsoDate(req.body.startsAt, 'startsAt');
     if (req.body?.endsAt !== undefined) patch.endsAt = requireIsoDate(req.body.endsAt, 'endsAt');
