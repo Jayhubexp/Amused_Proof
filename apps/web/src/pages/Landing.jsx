@@ -1,22 +1,15 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Accordion,
   Alert,
-  Badge,
   Button,
   Card,
   Group,
   List,
   SimpleGrid,
-  Skeleton,
   Text,
   Title,
 } from '@mantine/core';
-import { apiGet } from '../lib/api';
-import { LiveBadge, RulesOnlyBadge } from '../components/Badges';
-
-const SEVERITY_HEX = { high: '#e03131', medium: '#f08c00', low: '#1971c2', info: '#868e96' };
 
 function ShieldIcon() {
   return (
@@ -59,100 +52,6 @@ function DashIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#868e96" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
       <path d="M5 12h14" />
     </svg>
-  );
-}
-
-/** Live preview of the real Integrity Dashboard data — no fabricated numbers. */
-function IntegrityPreview() {
-  const [report, setReport] = useState(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    apiGet('/api/ai/integrity')
-      .then(setReport)
-      .catch(() => setFailed(true));
-  }, []);
-
-  return (
-    <Card withBorder radius="lg" padding="lg" className="w-full bg-white">
-      <Group justify="space-between" align="center">
-        <Text size="sm" fw={600}>
-          Integrity overview
-        </Text>
-        {report && (report.live ? <LiveBadge /> : <RulesOnlyBadge />)}
-      </Group>
-
-      {!report && !failed && (
-        <div className="mt-4 flex flex-col gap-2">
-          <Skeleton height={14} radius="sm" />
-          <Skeleton height={14} radius="sm" width="70%" />
-          <Skeleton height={14} radius="sm" width="85%" />
-        </div>
-      )}
-
-      {failed && (
-        <Text size="sm" c="dimmed" mt="md">
-          Live preview unavailable — start the API to load real audit analysis.{' '}
-          <Link to="/integrity">Open the dashboard</Link>.
-        </Text>
-      )}
-
-      {report && (
-        <>
-          <Group gap="xl" mt="md">
-            <div>
-              <Text size="xl" fw={700}>
-                {report.eventCount}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Events analysed
-              </Text>
-            </div>
-            <div>
-              <Text size="xl" fw={700}>
-                {report.findings?.length ?? 0}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Findings
-              </Text>
-            </div>
-            <div>
-              <Text size="xl" fw={700}>
-                {report.findings?.filter((f) => f.severity === 'high').length ?? 0}
-              </Text>
-              <Text size="xs" c="dimmed">
-                High severity
-              </Text>
-            </div>
-          </Group>
-          <div className="mt-4 flex flex-col gap-2 border-t border-stone-200 pt-4">
-            {(report.findings ?? []).slice(0, 3).map((finding, i) => (
-              <Group key={i} gap="xs" wrap="nowrap">
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: SEVERITY_HEX[finding.severity] ?? '#868e96' }}
-                />
-                <Text size="sm" lineClamp={1} style={{ flex: 1 }}>
-                  {finding.title}
-                </Text>
-                <Badge color={finding.source === 'rule' ? 'teal' : 'blue'} variant="light" size="xs">
-                  {finding.source === 'rule' ? 'Rule' : 'AI'}
-                </Badge>
-              </Group>
-            ))}
-            {(report.findings ?? []).length === 0 && (
-              <Text size="sm" c="dimmed">
-                No findings in the current audit data.
-              </Text>
-            )}
-          </div>
-          <Link to="/integrity" className="mt-4 inline-block text-sm font-medium text-civic-accent no-underline hover:underline">
-            Open integrity dashboard →
-          </Link>
-        </>
-      )}
-    </Card>
   );
 }
 
@@ -219,33 +118,30 @@ export function Landing() {
   return (
     <div>
       {/* Hero */}
-      <section aria-labelledby="hero-heading" className="grid items-center gap-10 md:grid-cols-2 md:gap-12">
-        <div>
-          <Text size="sm" fw={600} className="text-civic-accent">
-            Election integrity research
-          </Text>
-          <Title
-            id="hero-heading"
-            order={1}
-            mt="sm"
-            className="max-w-xl text-4xl font-semibold tracking-tight text-civic-ink md:text-5xl"
-          >
-            Explore the future of verifiable voting.
-          </Title>
-          <Text size="lg" c="dimmed" mt="md" className="max-w-xl">
-            CivicProof AI is an experimental platform exploring passkey-based digital voting,
-            privacy-preserving election technologies and AI-assisted audit intelligence.
-          </Text>
-          <Group mt="lg">
-            <Button component={Link} to="/elections" color="teal" size="md">
-              Explore demo elections
-            </Button>
-            <Button component={Link} to="/integrity" variant="outline" color="dark" size="md">
-              View integrity dashboard
-            </Button>
-          </Group>
-        </div>
-        <IntegrityPreview />
+      <section aria-labelledby="hero-heading" className="max-w-2xl">
+        <Text size="sm" fw={600} className="text-civic-accent">
+          Election integrity research
+        </Text>
+        <Title
+          id="hero-heading"
+          order={1}
+          mt="sm"
+          className="text-4xl font-semibold tracking-tight text-civic-ink md:text-5xl"
+        >
+          Explore the future of verifiable voting.
+        </Title>
+        <Text size="lg" c="dimmed" mt="md">
+          CivicProof AI is an experimental platform exploring passkey-based digital voting,
+          privacy-preserving election technologies and AI-assisted audit intelligence.
+        </Text>
+        <Group mt="lg">
+          <Button component={Link} to="/elections" color="teal" size="md">
+            Explore demo elections
+          </Button>
+          <Button component={Link} to="/integrity" variant="outline" color="dark" size="md">
+            View integrity dashboard
+          </Button>
+        </Group>
       </section>
 
       {/* Research notice */}
