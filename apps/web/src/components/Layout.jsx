@@ -4,7 +4,7 @@ import { Badge, Burger, Container, Drawer, Group, Stack, Text } from '@mantine/c
 import { useDisclosure } from '@mantine/hooks';
 
 const links = [
-  { to: '/', label: 'Home' },
+  { to: '/', label: 'Overview' },
   { to: '/elections', label: 'Elections' },
   { to: '/vote', label: 'Vote' },
   { to: '/audit', label: 'Audit explorer' },
@@ -17,16 +17,42 @@ const publicLinks = links.filter((l) => l.to !== '/organizer');
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-civic-accent';
 
+/** Proof Network mark: stacked proof layers on deep navy, sealed with a sand check. */
 function BrandMark() {
   return (
-    <span
-      aria-hidden="true"
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-civic-accent"
-    >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
-    </span>
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" className="h-8 w-8 shrink-0">
+      <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="#0B1F3B" />
+      <path
+        d="M16 6.5 22 10 16 13.5 10 10Z"
+        fill="none"
+        stroke="#F8F9F6"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 11.5 22 15 16 18.5 10 15Z"
+        fill="none"
+        stroke="#9BC2B0"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.5 20.5 14 24 22 15"
+        fill="none"
+        stroke="#D9C27A"
+        strokeWidth="2.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function Wordmark({ size = 'md' }) {
+  return (
+    <Text fw={700} size={size} className="whitespace-nowrap tracking-tight text-civic-ink">
+      CivicProof <span className="text-civic-accent">AI</span>
+    </Text>
   );
 }
 
@@ -60,8 +86,8 @@ export function Layout({ children }) {
           <div className="h-full w-24 bg-civic-gold" />
         </div>
         <header
-          className={`border-b border-stone-200 bg-civic-paper transition-shadow duration-150 ${
-            scrolled ? 'shadow-[0_2px_14px_rgba(20,35,46,0.10)]' : ''
+          className={`border-b border-civic-line bg-civic-paper transition-shadow duration-150 ${
+            scrolled ? 'shadow-[0_2px_14px_rgba(11,31,59,0.10)]' : ''
           }`}
         >
           <Container size="lg" className="flex h-16 items-center justify-between gap-4">
@@ -71,16 +97,14 @@ export function Layout({ children }) {
               aria-label="CivicProof AI home"
             >
               <BrandMark />
-              <Text fw={700} size="md" className="whitespace-nowrap text-civic-ink">
-                CivicProof AI
-              </Text>
+              <Wordmark />
               <span className="hidden lg:inline">
                 <Badge color="gray" variant="light" size="xs">
                   Research prototype
                 </Badge>
               </span>
             </Link>
-            <nav aria-label="Primary" className="hidden items-center gap-6 md:flex lg:gap-8">
+            <nav aria-label="Primary" className="hidden items-center gap-6 lg:flex xl:gap-8">
               {publicLinks.map((l) => (
                 <NavLink
                   key={l.to}
@@ -98,11 +122,11 @@ export function Layout({ children }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="hidden items-center gap-3 md:flex">
+            <div className="hidden items-center gap-3 lg:flex">
               <DemoPill />
               <NavLink
                 to="/organizer"
-                className={`whitespace-nowrap rounded-md bg-civic-accent px-4 py-2 text-[15px] font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0a5a4e] ${focusRing}`}
+                className={`whitespace-nowrap rounded-md bg-civic-accent px-4 py-2 text-[15px] font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0b5443] ${focusRing}`}
               >
                 Organizer
               </NavLink>
@@ -110,8 +134,8 @@ export function Layout({ children }) {
             <Burger
               opened={opened}
               onClick={toggle}
-              className="md:hidden"
-              color="#14232e"
+              className="lg:hidden"
+              color="#0b1f3b"
               aria-label={opened ? 'Close menu' : 'Open menu'}
               aria-expanded={opened}
             />
@@ -124,7 +148,7 @@ export function Layout({ children }) {
         onClose={close}
         title="CivicProof AI"
         position="right"
-        className="md:hidden"
+        className="lg:hidden"
         aria-label="Mobile navigation"
       >
         <Stack gap={4}>
@@ -146,7 +170,7 @@ export function Layout({ children }) {
           <NavLink
             to="/organizer"
             onClick={close}
-            className={`mt-2 flex min-h-[44px] items-center justify-center rounded-md bg-civic-accent px-3 text-base font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0a5a4e] ${focusRing}`}
+            className={`mt-2 flex min-h-[44px] items-center justify-center rounded-md bg-civic-accent px-3 text-base font-semibold text-white no-underline transition-colors duration-150 hover:bg-[#0b5443] ${focusRing}`}
           >
             Organizer
           </NavLink>
@@ -165,14 +189,12 @@ export function Layout({ children }) {
         </Container>
       </main>
 
-      <footer className="border-t border-stone-200">
+      <footer className="border-t border-civic-line">
         <Container size="lg" className="flex flex-col gap-4 py-8 md:flex-row md:items-start md:justify-between">
           <div className="max-w-md">
             <Group gap="xs">
               <BrandMark />
-              <Text fw={700} size="sm">
-                CivicProof AI
-              </Text>
+              <Wordmark size="sm" />
             </Group>
             <Text size="xs" c="dimmed" mt="xs">
               A research prototype exploring verifiable voting. All voters and elections are
